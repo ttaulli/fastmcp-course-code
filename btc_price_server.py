@@ -7,7 +7,27 @@ from datetime import datetime, timezone
 from typing import Dict, Optional
 
 import requests
-from fastmcp import FastMCP  # <-- fixed: no 'mcp' import
+from fastmcp import FastMCP  
+
+
+# Add these imports at the top (install first: pip install python-dotenv)
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from:
+#   1) workspace root (current working dir when VS Code starts the server)
+#   2) the directory where this file lives (fallback)
+workspace_dotenv = Path.cwd() / ".env"
+script_dotenv = Path(__file__).resolve().parent.parent / ".env"  # adjust if needed
+
+# Try workspace .env first; if missing, try the parent of script dir (or tweak path)
+for candidate in (workspace_dotenv, script_dotenv):
+    try:
+        if candidate.exists():
+            load_dotenv(dotenv_path=candidate, override=False)
+            break
+    except Exception:
+        pass
 
 
 # -----------------------------
