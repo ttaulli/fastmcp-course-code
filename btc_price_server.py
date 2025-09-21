@@ -1,123 +1,132 @@
 # btc_price_server.py
 from __future__ import annotations
-from dataclasses import dataclass, asdict
-from typing import Dict, Any
+
 import os
-import time
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from typing import Dict, Optional
+
 import requests
-
-from fastmcp import mcp
-
-# =========================
-# Config
-# =========================
-CMC_KEY = os.getenv("COINMARKETCAP_API_KEY")  # <-- set this in your shell
-USER_AGENT = "fastmcp-btc/1.0"
-TIMEOUT_SECS = 5.0
-MAX_RETRIES = 3
-BACKOFF_START = 0.5  # seconds
+from fastmcp import FastMCP  # <-- fixed: no 'mcp' import
 
 
-# =========================
-# Data model
-# =========================
+# -----------------------------
+# Data models (structured I/O)
+# -----------------------------
+
 @dataclass
-class BTCResult:
-    symbol: str       # "BTC"
-    currency: str     # "USD", "EUR", etc.
-    price: float
-    change_24h: float
-    volume: float
-    as_of: str        # ISO-like timestamp
-    source: str       # "coinmarketcap"
+class BTCPriceQuote:
+    symbol: str                 # e.g., "BTC"
+    convert: str                # e.g., "USD"
+    price: float                # e.g., 64000.12
+    market_cap: Optional[float]
+    volume_24h: Optional[float]
+    percent_change_1h: Optional[float]
+    percent_change_24h: Optional[float]
+    percent_change_7d: Optional[float]
+    last_updated: str           # ISO-8601 timestamp from API
+    fetched_at: str             # ISO-8601 timestamp (this server)
+    source: str                 # e.g., "CoinMarketCap"
 
 
-# =========================
+# -----------------------------
+# MCP server initialization
+# -----------------------------
+
+mcp_server = FastMCP("BTC Price MCP")
+
+
+# -----------------------------
 # Helpers
-# =========================
-def _http_get(url: str, headers: Dict[str, str], params: Dict[str, str]) -> requests.Response:
-    """GET with simple retry/backoff for 429/5xx, plus a hard timeout."""
-    backoff = BACKOFF_START
-    last_exc: Exception | None = None
+# -----------------------------
 
-    for _ in range(MAX_RETRIES):
-        try:
-            r = requests.get(url, headers=headers, params=params, timeout=TIMEOUT_SECS)
-            # retry on rate-limit or server errors
-            if r.status_code == 429 or 500 <= r.status_code < 600:
-                retry_after = r.headers.get("Retry-After")
-                sleep_for = float(retry_after) if (retry_after and retry_after.isdigit()) else backoff
-                time.sleep(sleep_for)
-                backoff *= 2
-                continue
-            return r
-        except requests.RequestException as e:
-            last_exc = e
-            time.sleep(backoff)
-            backoff *= 2
-
-    if last_exc:
-        raise last_exc
-    raise requests.HTTPError("GET failed after retries")
-
-
-def _cmc_btc_price(currency: str) -> BTCResult:
-    """Fetch BTC price from CoinMarketCap using the Pro API."""
-    if not CMC_KEY:
-        raise RuntimeError("Missing COINMARKETCAP_API_KEY")
-
-    url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest"
-    headers = {
-        "X-CMC_PRO_API_KEY": CMC_KEY,
-        "User-Agent": USER_AGENT,
-    }
-    params = {"symbol": "BTC", "convert": currency.upper()}
-
-    resp = _http_get(url, headers=headers, params=params)
-    resp.raise_for_status()
-    payload = resp.json()
-
-    try:
-        d = payload["data"]["BTC"][0]
-        q = d["quote"][currency.upper()]
-
-        return BTCResult(
-            symbol="BTC",
-            currency=currency.upper(),
-            price=float(q["price"]),
-            change_24h=float(q.get("percent_change_24h", 0.0)),
-            volume=float(q.get("volume_24h", 0.0)),
-            as_of=d.get("last_updated") or q.get("last_updated") or "",
-            source="coinmarketcap",
+def _get_api_key() -> str:
+    api_key = os.getenv("COINMARKETCAP_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "COINMARKETCAP_API_KEY is not set. "
+            "Set it in your environment before running this server."
         )
-    except Exception as e:
-        # Explicit error if schema doesn't match
-        raise ValueError(f"Unexpected CoinMarketCap response shape: {e}")
+    return api_key
 
 
-# =========================
-# Public MCP tool
-# =========================
-@mcp.tool
-def get_btc_price(currency: str = "USD") -> Dict[str, Any]:
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# -----------------------------
+# Tool: get_btc_price
+# -----------------------------
+
+@mcp_server.tool(description="Get the current Bitcoin price using CoinMarketCap.")
+def get_btc_price(convert: str = "USD") -> Dict:
     """
-    Get the latest BTC price in the given currency.
+    Fetch the latest BTC quote from CoinMarketCap.
 
     Args:
-      currency: e.g., "USD", "EUR", "JPY"
+        convert: The fiat or crypto currency to convert into (e.g., "USD", "EUR", "ETH").
 
     Returns:
-      {symbol, currency, price, change_24h, volume, as_of, source}
-
-    Raises:
-      RuntimeError if the API key is missing or the request fails.
+        Dict representation of BTCPriceQuote (JSON-serializable).
     """
-    result = _cmc_btc_price(currency)
+    convert = convert.upper().strip()
+    api_key = _get_api_key()
+
+    url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+    params = {"symbol": "BTC", "convert": convert}
+    headers = {
+        "X-CMC_PRO_API_KEY": api_key,
+        "Accept": "application/json",
+        "User-Agent": "btc-price-mcp/1.0",
+    }
+
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError(f"HTTP/network error calling CoinMarketCap: {e}") from e
+
+    try:
+        payload = resp.json()
+    except ValueError as e:
+        raise RuntimeError(f"Failed to parse JSON from CoinMarketCap: {e}") from e
+
+    status = payload.get("status", {})
+    if status.get("error_code", 0) != 0:
+        code = status.get("error_code")
+        msg = status.get("error_message", "Unknown API error")
+        raise RuntimeError(f"CoinMarketCap API error {code}: {msg}")
+
+    try:
+        btc = payload["data"]["BTC"]
+        quote = btc["quote"][convert]
+        result = BTCPriceQuote(
+            symbol=btc.get("symbol", "BTC"),
+            convert=convert,
+            price=float(quote["price"]),
+            market_cap=float(quote["market_cap"]) if "market_cap" in quote else None,
+            volume_24h=float(quote["volume_24h"]) if "volume_24h" in quote else None,
+            percent_change_1h=float(quote["percent_change_1h"]) if "percent_change_1h" in quote else None,
+            percent_change_24h=float(quote["percent_change_24h"]) if "percent_change_24h" in quote else None,
+            percent_change_7d=float(quote["percent_change_7d"]) if "percent_change_7d" in quote else None,
+            last_updated=quote.get("last_updated", ""),
+            fetched_at=_now_iso(),
+            source="CoinMarketCap",
+        )
+    except KeyError as e:
+        raise ValueError(f"Expected field missing in API response: {e}") from e
+
     return asdict(result)
 
 
-# =========================
-# Entrypoint (stdio transport)
-# =========================
+# -----------------------------
+# Entrypoint
+# -----------------------------
+
 if __name__ == "__main__":
-    mcp.run()
+    # Example:
+    #   export COINMARKETCAP_API_KEY="your_key_here"
+    #   python btc_price_server.py
+    mcp_server.run()
+
+

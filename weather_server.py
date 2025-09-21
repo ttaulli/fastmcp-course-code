@@ -5,8 +5,6 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Dict
 
-# FastMCP framework
-# pip install fastmcp  (or per your course setup)
 from fastmcp import FastMCP
 
 # -----------------------------------------------------------------------------
