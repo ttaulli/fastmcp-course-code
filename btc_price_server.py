@@ -123,7 +123,6 @@ def btc_price_resource(vs_currency: VsCurrency = "USD") -> dict:
     return get_btc_price(vs_currency)
 
 if __name__ == "__main__":
-    # stdio is convenient for Copilot MCP
+
     mcp.run(transport="stdio")
-    # Or run as HTTP:
-    # mcp.run(transport="streamable-http", host="127.0.0.1", port=8756)
+  
