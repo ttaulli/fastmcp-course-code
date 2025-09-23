@@ -6,6 +6,13 @@
 			"args": [
 				"btc_price_server.py"
 			]
+		},
+		"Docs MCP": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"mcp_docs_server.py"
+			]
 		}
 	},
 	"inputs": []
