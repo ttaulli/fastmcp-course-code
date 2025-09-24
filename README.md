@@ -27,7 +27,7 @@ pip install -r requirements.txt
 
 ## Environment variables (.env)
 
-Only the BTC price server needs a secret:
+BTC price and trend servers need a secret:
 
 - `COINMARKETCAP_API_KEY` – get a free API key at https://coinmarketcap.com/api/
 
@@ -38,7 +38,7 @@ COINMARKETCAP_API_KEY=your_key_here
 ```
 
 Notes
-- `btc_price_server.py` auto-loads `.env` from the current working directory or a `.env` next to the script.
+- `btc_price_server.py` and `btc_trend_server.py` auto-load `.env` from the current working directory or a `.env` next to each script.
 - You can also export in your shell for one session:
   - zsh: `export COINMARKETCAP_API_KEY=your_key_here`
 
@@ -105,6 +105,32 @@ Returns JSON like:
 Notes
 - Requires `COINMARKETCAP_API_KEY` (same as the price server).
 - Keeps a small in-memory history per currency; if history is short and `simulate_if_needed=true`, the server backfills a small synthetic price series to enable SMA calculation.
+ - Spot price fetches are cached for ~10 seconds to avoid hammering the API.
+ - History uses ~1-minute granularity and is capped to a rolling buffer.
+
+Resource
+- `trend://btc/{vs_currency}` – resource wrapper that returns the same payload as the tool with defaults.
+
+Example output
+
+```
+{
+  "symbol": "BTC",
+  "vs_currency": "USD",
+  "price": 113731.52,
+  "last_updated": "2025-09-24T17:02:00.000Z",
+  "sma_short": 113810.12,
+  "sma_long": 113914.25,
+  "signal": "neutral",
+  "ratio_bps": -9.14,
+  "threshold_bps": 25.0,
+  "points_used": 60,
+  "source": "coinmarketcap",
+  "attribution": "Data from CoinMarketCap",
+  "endpoint": "quotes/latest",
+  "note": "simulated 59 synthetic points to fill history"
+}
+```
 
 ### 3) Weather server (stdio, stubbed)
 
