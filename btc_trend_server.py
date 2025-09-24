@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import time
-import math
 import random
 from typing import Dict, Any, List, Literal
 
@@ -48,6 +47,7 @@ CACHE_TTL_SECONDS = 10
 _CACHE: Dict[str, Dict[str, Any]] = {}
 _HISTORY: Dict[str, List[Dict[str, float]]] = {}  # key: vs_currency, value: list of {ts, price}
 _HISTORY_MAX = 1000
+_LAST_SPOT: Dict[str, Dict[str, Any]] = {}  # last fetched spot by vs_currency
 
 
 def _get_cached(key: str) -> dict | None:
@@ -106,6 +106,44 @@ def _fetch_cmc_btc_spot(convert: str) -> dict:
         "endpoint": "quotes/latest",
         "attribution": "Data from CoinMarketCap",
     }
+
+
+@mcp.tool(
+    name="fetch_btc_spot",
+    description=(
+        "Fetch the current BTC spot price (CoinMarketCap) and update in-memory history. "
+        "Call this first in a chain before computing trend."
+    ),
+)
+def fetch_btc_spot(vs_currency: VsCurrency = "USD") -> dict:
+    """
+    Fetch BTC spot price in the specified fiat currency, cache it briefly, and append
+    the price to the in-memory history for subsequent trend calculations.
+
+    Returns the spot payload or an error dict.
+    """
+    vs = vs_currency.upper()
+
+    # Use small cache to avoid hitting API too often
+    cache_key = f"btc:{vs}"
+    hit = _get_cached(cache_key)
+    if hit is None:
+        spot = _fetch_cmc_btc_spot(vs)
+        if "error" in spot:
+            return spot
+        _set_cached(cache_key, spot)
+    else:
+        spot = hit
+
+    # Side effects for chaining: remember and extend history
+    try:
+        price = float(spot["price"])
+    except Exception:
+        return {"error": "invalid_spot_payload", "details": "Missing price from spot response."}
+
+    _append_history(vs, price)
+    _LAST_SPOT[vs] = spot
+    return spot
 
 
 def _append_history(vs: str, price: float, ts: float | None = None) -> None:
@@ -192,14 +230,13 @@ def _signal_from_sma(short_sma: float, long_sma: float, threshold_bps: float) ->
 
 
 @mcp.tool(
-    name="get_btc_trend_signal",
+    name="compute_btc_trend_signal",
     description=(
-        "Get BTC SMA trend signal by combining live price with a recent price series. "
-        "Uses CoinMarketCap for spot price and computes short/long moving averages; "
-        "can simulate missing history for demo use."
+        "Compute BTC SMA trend from in-memory price history. "
+        "Chain by calling fetch_btc_spot first to update history with the latest price."
     ),
 )
-def get_btc_trend_signal(
+def compute_btc_trend_signal(
     vs_currency: VsCurrency = "USD",
     lookback_minutes: int = 60,
     short_window: int = 5,
@@ -208,7 +245,7 @@ def get_btc_trend_signal(
     simulate_if_needed: bool = True,
 ) -> dict:
     """
-    Compute a simple SMA-based trend signal for BTC.
+    Compute a simple SMA-based trend signal for BTC using already-fetched price history.
 
     Args:
         vs_currency: Target fiat (USD, EUR, GBP, CAD, AUD, CHF, JPY, INR)
@@ -233,22 +270,19 @@ def get_btc_trend_signal(
 
     vs = vs_currency.upper()
 
-    # Step 1: fetch current price (with small cache)
-    cache_key = f"btc:{vs}"
-    hit = _get_cached(cache_key)
-    if hit is None:
-        spot = _fetch_cmc_btc_spot(vs)
-        if "error" in spot:
-            return spot
-        _set_cached(cache_key, spot)
-    else:
-        spot = hit
+    # Require that fetch_btc_spot be called first so we have the most recent spot
+    spot = _LAST_SPOT.get(vs)
+    if not spot:
+        return {
+            "error": "missing_spot",
+            "details": "No recent spot price in memory. Call fetch_btc_spot first, then compute_btc_trend_signal.",
+        }
 
-    price = float(spot["price"])  # current
+    try:
+        price = float(spot["price"])  # last fetched current price
+    except Exception:
+        return {"error": "invalid_spot_payload", "details": "Missing price from stored spot response."}
     pct_24h = float(spot.get("percent_change_24h", 0.0))
-
-    # Step 2: append current price to history
-    _append_history(vs, price)
 
     # Step 3: ensure we have enough points in the lookback and windows
     # We treat each point as ~1-minute granularity for simplicity
@@ -295,11 +329,42 @@ def get_btc_trend_signal(
     return out
 
 
+# Backward-compatible convenience wrapper that chains the two steps internally
+@mcp.tool(
+    name="get_btc_trend_signal",
+    description=(
+        "Convenience wrapper: fetch latest BTC spot and then compute the SMA trend signal. "
+        "For explicit chaining, call fetch_btc_spot then compute_btc_trend_signal."
+    ),
+)
+def get_btc_trend_signal(
+    vs_currency: VsCurrency = "USD",
+    lookback_minutes: int = 60,
+    short_window: int = 5,
+    long_window: int = 20,
+    neutral_threshold_bps: float = 25.0,
+    simulate_if_needed: bool = True,
+) -> dict:
+    # 1) Fetch and append to history
+    spot = fetch_btc_spot(vs_currency=vs_currency)
+    if "error" in spot:
+        return spot
+    # 2) Compute using the updated history
+    return compute_btc_trend_signal(
+        vs_currency=vs_currency,
+        lookback_minutes=lookback_minutes,
+        short_window=short_window,
+        long_window=long_window,
+        neutral_threshold_bps=neutral_threshold_bps,
+        simulate_if_needed=simulate_if_needed,
+    )
+
+
 @mcp.resource("trend://btc/{vs_currency}")
 def btc_trend_resource(
     vs_currency: VsCurrency = "USD",
 ) -> dict:
-    # Provide a convenient resource wrapper using defaults
+    # Provide a convenient resource wrapper using defaults (runs the full chain)
     return get_btc_trend_signal(vs_currency=vs_currency)
 
 
