@@ -5,6 +5,7 @@ This repo contains several small, focused Model Context Protocol (MCP) servers b
 Included servers and client:
 - `hello.py` – minimal HTTP MCP with a `say_hello` tool and a demo client in `client.py`.
 - `btc_price_server.py` – fetches live BTC price from CoinMarketCap, with caching and .env support.
+- `btc_trend_server.py` – computes a BTC SMA-based trend signal by chaining live price + moving-average analysis.
 - `weather_server.py` – deterministic, stubbed weather/forecast service returning typed dataclasses.
 - `mcp_docs_server.py` – in-memory knowledge base with resources and upsert tools.
 - `password_server.py` – strong password generator with entropy metadata.
@@ -84,6 +85,26 @@ Tool contract
 Common errors
 - `missing_api_key` – set `COINMARKETCAP_API_KEY` in your environment.
 - `http_401/403/429` – auth/rate-limits; check key/plan.
+
+### 2b) BTC Trend server (stdio)
+
+Combines live BTC price (CoinMarketCap) with a short in-memory price history to compute short/long simple moving averages and emit a quick trend signal.
+
+Run:
+
+```
+python3 btc_trend_server.py
+```
+
+Tool
+- `get_btc_trend_signal(vs_currency="USD", lookback_minutes=60, short_window=5, long_window=20, neutral_threshold_bps=25.0, simulate_if_needed=True)`
+
+Returns JSON like:
+`{ symbol, vs_currency, price, last_updated, sma_short, sma_long, signal, ratio_bps, threshold_bps, points_used, source, attribution, endpoint, note }`
+
+Notes
+- Requires `COINMARKETCAP_API_KEY` (same as the price server).
+- Keeps a small in-memory history per currency; if history is short and `simulate_if_needed=true`, the server backfills a small synthetic price series to enable SMA calculation.
 
 ### 3) Weather server (stdio, stubbed)
 

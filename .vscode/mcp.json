@@ -1,17 +1,18 @@
 {
 	"servers": {
+		"Context7 MCP": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"-y",
+				"@upstash/context7-mcp"
+			]
+		},
 		"Bitcoin MCP": {
 			"type": "stdio",
 			"command": "python3",
 			"args": [
-				"btc_price_server.py"
-			]
-		},
-		"Docs MCP": {
-			"type": "stdio",
-			"command": "python",
-			"args": [
-				"mcp_docs_server.py"
+				"btc_trend_server.py"
 			]
 		}
 	},
