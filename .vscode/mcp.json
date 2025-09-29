@@ -21,6 +21,13 @@
 			"args": [
 				"middleware_server.py"
 			]
+		},
+		"Weather Plugin MCP": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"weather_plugins.py"
+			]
 		}
 	},
 	"inputs": []
