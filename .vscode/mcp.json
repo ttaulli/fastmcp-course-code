@@ -1,34 +1,9 @@
 {
-	"servers": {
-		"Context7 MCP": {
-			"type": "stdio",
-			"command": "npx",
-			"args": [
-				"-y",
-				"@upstash/context7-mcp"
-			]
-		},
-		"Bitcoin MCP": {
-			"type": "stdio",
-			"command": "python3",
-			"args": [
-				"btc_trend_server.py"
-			]
-		},
-		"Middleware Server": {
-			"type": "stdio",
-			"command": "python",
-			"args": [
-				"middleware_server.py"
-			]
-		},
-		"Weather Plugin MCP": {
-			"type": "stdio",
-			"command": "python",
-			"args": [
-				"weather_plugins.py"
-			]
-		}
-	},
-	"inputs": []
+  "servers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+
+    }
+  }
 }
