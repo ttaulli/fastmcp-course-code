@@ -1,9 +1,16 @@
 {
-  "servers": {
-    "context7": {
-      "type": "http",
-      "url": "https://mcp.context7.com/mcp"
-
-    }
-  }
+	"servers": {
+		"context7": {
+			"type": "http",
+			"url": "https://mcp.context7.com/mcp"
+		},
+		"Password MCP": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"password_server.py"
+			]
+		}
+	},
+	"inputs": []
 }
