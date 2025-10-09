@@ -10,6 +10,13 @@
 			"args": [
 				"password_server.py"
 			]
+		},
+		"Weather MCP": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"weather_server.py"
+			]
 		}
 	},
 	"inputs": []
