@@ -17,6 +17,20 @@
 			"args": [
 				"weather_server.py"
 			]
+		},
+		"Crypto MCP": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"btc_price_server.py"
+			]
+		},
+		"Docs MCP Server": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"mcp_docs_server.py"
+			]
 		}
 	},
 	"inputs": []
