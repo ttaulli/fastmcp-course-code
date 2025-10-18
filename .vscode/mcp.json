@@ -38,6 +38,13 @@
 			"args": [
 				"btc_trend_server.py"
 			]
+		},
+		"MCP Middleware Server": {
+			"type": "stdio",
+			"command": "python",
+			"args": [
+				"middleware_server.py"
+			]
 		}
 	},
 	"inputs": []
